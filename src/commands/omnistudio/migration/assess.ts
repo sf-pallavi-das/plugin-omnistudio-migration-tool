@@ -1,8 +1,7 @@
 import path from 'path';
 import * as os from 'os';
-import { flags } from '@salesforce/command';
-import { Messages, Connection } from '@salesforce/core';
-import OmniStudioBaseCommand from '../../basecommand';
+import { Messages, Connection, Org, Logger as CoreLogger } from '@salesforce/core';
+import { SfCommand, Ux, Flags as flags } from '@salesforce/sf-plugins-core';
 import { AssessmentInfo } from '../../../utils/interfaces';
 import { AssessmentReporter } from '../../../utils/resultsbuilder/assessmentReporter';
 import { OmniScriptExportType, OmniScriptMigrationTool } from '../../../migration/omniscript';
@@ -26,39 +25,57 @@ import { ValidatorService } from '../../../utils/validatorService';
 Messages.importMessagesDirectory(__dirname);
 const messages = Messages.loadMessages('@salesforce/plugin-omnistudio-migration-tool', 'assess');
 
-export default class Assess extends OmniStudioBaseCommand {
+interface AssessFlags {
+  'target-org'?: Org;
+  only?: string;
+  allversions?: boolean;
+  relatedobjects?: string;
+  verbose?: boolean;
+}
+
+export default class Assess extends SfCommand<AssessmentInfo> {
   public static description = messages.getMessage('commandDescription');
 
   public static examples = messages.getMessage('examples').split(os.EOL);
 
-  public static args = [{ name: 'file' }];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public static args: any = [];
 
-  protected static flagsConfig = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public static readonly flags: any = {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    'target-org': flags.optionalOrg({
+      summary: 'Target org username or alias',
+      required: true,
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     only: flags.string({
       char: 'o',
       description: messages.getMessage('onlyFlagDescription'),
     }),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     allversions: flags.boolean({
       char: 'a',
       description: messages.getMessage('allVersionsDescription'),
       required: false,
     }),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     relatedobjects: flags.string({
       char: 'r',
       description: messages.getMessage('relatedObjectGA'),
     }),
-    verbose: flags.builtin({
-      type: 'builtin',
+    verbose: flags.boolean({
       description: messages.getMessage('enableVerboseOutput'),
     }),
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public async run(): Promise<any> {
-    Logger.initialiseLogger(this.ux, this.logger, 'assess', this.flags.verbose);
+  public async run(): Promise<AssessmentInfo> {
+    const { flags: parsedFlags } = await this.parse(Assess);
+    const ux = new Ux({ jsonEnabled: this.jsonEnabled() });
+    const logger = await CoreLogger.child(this.constructor.name);
+    Logger.initialiseLogger(ux, logger, 'assess', parsedFlags.verbose);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return await this.runAssess();
+      return await this.runAssess(parsedFlags as AssessFlags, ux, logger);
     } catch (e) {
       const error = e as Error;
       Logger.error(messages.getMessage('errorRunningAssess', [error.message]), error);
@@ -66,14 +83,17 @@ export default class Assess extends OmniStudioBaseCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public async runAssess(): Promise<any> {
+  public async runAssess(parsedFlags: AssessFlags, ux: Ux, logger: CoreLogger): Promise<AssessmentInfo> {
     DebugTimer.getInstance().start();
-    const allVersions = (this.flags.allversions || false) as boolean;
-    const assessOnly = (this.flags.only || '') as string;
-    const relatedObjects = (this.flags.relatedobjects || '') as string;
+    const allVersions = parsedFlags.allversions || false;
+    const assessOnly = parsedFlags.only || '';
+    const relatedObjects = parsedFlags.relatedobjects || '';
     const isExperienceBundleMetadataAPIProgramaticallyEnabled: { value: boolean } = { value: false };
-    const conn = this.org.getConnection();
+
+    // target-org is required by flag definition, so it will always be present
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const org = parsedFlags['target-org']!;
+    const conn = org.getConnection();
     let objectsToProcess: string[];
     // To-Do: Add LWC to valid options when GA is released
     const validOptions = [Constants.Apex, Constants.ExpSites, Constants.FlexiPage, Constants.LWC];
@@ -93,7 +113,7 @@ export default class Assess extends OmniStudioBaseCommand {
 
     const namespace = orgs.packageDetails.namespace;
     let projectPath = '';
-    const preMigrate: PreMigrate = new PreMigrate(namespace, conn, this.logger, messages, this.ux);
+    const preMigrate: PreMigrate = new PreMigrate(namespace, conn, logger, messages, ux);
     if (relatedObjects) {
       objectsToProcess = relatedObjects.split(',').map((obj) => obj.trim());
       projectPath = await ProjectPathUtil.getProjectPath(messages, true);
@@ -129,13 +149,13 @@ export default class Assess extends OmniStudioBaseCommand {
 
     Logger.log(messages.getMessage('assessmentInitialization', [String(namespace)]));
     Logger.log(messages.getMessage('apiVersionInfo', [String(apiVersion)]));
-    Logger.logVerbose(messages.getMessage('assessmentTargets', [String(this.flags.only || 'all')]));
+    Logger.logVerbose(messages.getMessage('assessmentTargets', [String(parsedFlags.only || 'all')]));
     Logger.logVerbose(messages.getMessage('relatedObjectsInfo', [relatedObjects || 'none']));
     Logger.logVerbose(messages.getMessage('allVersionsFlagInfo', [String(allVersions)]));
 
     try {
       // Assess OmniStudio components
-      await this.assessOmniStudioComponents(assesmentInfo, assessOnly, namespace, conn, allVersions);
+      await this.assessOmniStudioComponents(assesmentInfo, assessOnly, namespace, conn, allVersions, ux);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (ex: any) {
       if (ex instanceof InvalidEntityTypeError) {
@@ -165,7 +185,7 @@ export default class Assess extends OmniStudioBaseCommand {
         namespace,
         assessOnly,
         allVersions,
-        this.org,
+        org,
         projectPath
       );
       const relatedObjectAssessmentResult = omnistudioRelatedObjectsMigration.assessAll(objectsToProcess);
@@ -182,15 +202,7 @@ export default class Assess extends OmniStudioBaseCommand {
     }
 
     // Post Assessment tasks
-    const postMigrate: PostMigrate = new PostMigrate(
-      this.org,
-      namespace,
-      conn,
-      this.logger,
-      messages,
-      this.ux,
-      objectsToProcess
-    );
+    const postMigrate: PostMigrate = new PostMigrate(org, namespace, conn, logger, messages, ux, objectsToProcess);
 
     const userActionMessages: string[] = [];
     await postMigrate.restoreExperienceAPIMetadataSettings(
@@ -222,34 +234,35 @@ export default class Assess extends OmniStudioBaseCommand {
     assessOnly: string,
     namespace: string,
     conn: Connection,
-    allVersions: boolean
+    allVersions: boolean,
+    ux: Ux
   ): Promise<void> {
     if (!assessOnly) {
       // If no specific component is specified, assess all components
-      await this.assessDataRaptors(assesmentInfo, namespace, conn);
-      await this.assessFlexCards(assesmentInfo, namespace, conn, allVersions);
-      await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.OS);
-      await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.IP);
-      await this.assessGlobalAutoNumbers(assesmentInfo, namespace, conn);
+      await this.assessDataRaptors(assesmentInfo, namespace, conn, ux);
+      await this.assessFlexCards(assesmentInfo, namespace, conn, allVersions, ux);
+      await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.OS, ux);
+      await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.IP, ux);
+      await this.assessGlobalAutoNumbers(assesmentInfo, namespace, conn, ux);
       await this.assessCustomLabels(assesmentInfo, namespace, conn);
       return;
     }
 
     switch (assessOnly) {
       case Constants.DataMapper:
-        await this.assessDataRaptors(assesmentInfo, namespace, conn);
+        await this.assessDataRaptors(assesmentInfo, namespace, conn, ux);
         break;
       case Constants.Flexcard:
-        await this.assessFlexCards(assesmentInfo, namespace, conn, allVersions);
+        await this.assessFlexCards(assesmentInfo, namespace, conn, allVersions, ux);
         break;
       case Constants.Omniscript:
-        await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.OS);
+        await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.OS, ux);
         break;
       case Constants.IntegrationProcedure:
-        await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.IP);
+        await this.assessOmniScripts(assesmentInfo, namespace, conn, allVersions, OmniScriptExportType.IP, ux);
         break;
       case Constants.GlobalAutoNumber:
-        await this.assessGlobalAutoNumbers(assesmentInfo, namespace, conn);
+        await this.assessGlobalAutoNumbers(assesmentInfo, namespace, conn, ux);
         break;
       case Constants.CustomLabel:
         await this.assessCustomLabels(assesmentInfo, namespace, conn);
@@ -259,8 +272,13 @@ export default class Assess extends OmniStudioBaseCommand {
     }
   }
 
-  private async assessDataRaptors(assesmentInfo: AssessmentInfo, namespace: string, conn: Connection): Promise<void> {
-    const drMigrator = new DataRaptorMigrationTool(namespace, conn, Logger, messages, this.ux);
+  private async assessDataRaptors(
+    assesmentInfo: AssessmentInfo,
+    namespace: string,
+    conn: Connection,
+    ux: Ux
+  ): Promise<void> {
+    const drMigrator = new DataRaptorMigrationTool(namespace, conn, Logger, messages, ux);
     assesmentInfo.dataRaptorAssessmentInfos = await drMigrator.assess();
     Logger.logVerbose(
       messages.getMessage('assessedDataRaptorsCount', [assesmentInfo.dataRaptorAssessmentInfos.length])
@@ -272,9 +290,10 @@ export default class Assess extends OmniStudioBaseCommand {
     assesmentInfo: AssessmentInfo,
     namespace: string,
     conn: Connection,
-    allVersions: boolean
+    allVersions: boolean,
+    ux: Ux
   ): Promise<void> {
-    const flexMigrator = new CardMigrationTool(namespace, conn, Logger, messages, this.ux, allVersions);
+    const flexMigrator = new CardMigrationTool(namespace, conn, Logger, messages, ux, allVersions);
     Logger.logVerbose(messages.getMessage('flexCardAssessment'));
     assesmentInfo.flexCardAssessmentInfos = await flexMigrator.assess();
     Logger.logVerbose(messages.getMessage('assessedFlexCardsCount', [assesmentInfo.flexCardAssessmentInfos.length]));
@@ -286,11 +305,12 @@ export default class Assess extends OmniStudioBaseCommand {
     namespace: string,
     conn: Connection,
     allVersions: boolean,
-    exportType: OmniScriptExportType
+    exportType: OmniScriptExportType,
+    ux: Ux
   ): Promise<void> {
     const exportComponentType = exportType === OmniScriptExportType.IP ? 'Integration Procedures' : 'Omniscripts';
     Logger.logVerbose(messages.getMessage('omniScriptAssessment', [exportComponentType]));
-    const osMigrator = new OmniScriptMigrationTool(exportType, namespace, conn, Logger, messages, this.ux, allVersions);
+    const osMigrator = new OmniScriptMigrationTool(exportType, namespace, conn, Logger, messages, ux, allVersions);
     const newOmniAssessmentInfo = await osMigrator.assess(
       assesmentInfo.dataRaptorAssessmentInfos,
       assesmentInfo.flexCardAssessmentInfos
@@ -326,10 +346,11 @@ export default class Assess extends OmniStudioBaseCommand {
   private async assessGlobalAutoNumbers(
     assesmentInfo: AssessmentInfo,
     namespace: string,
-    conn: Connection
+    conn: Connection,
+    ux: Ux
   ): Promise<void> {
     Logger.logVerbose(messages.getMessage('startingGlobalAutoNumberAssessment'));
-    const globalAutoNumberMigrationTool = new GlobalAutoNumberMigrationTool(namespace, conn, Logger, messages, this.ux);
+    const globalAutoNumberMigrationTool = new GlobalAutoNumberMigrationTool(namespace, conn, Logger, messages, ux);
     assesmentInfo.globalAutoNumberAssessmentInfos = await globalAutoNumberMigrationTool.assess();
     Logger.logVerbose(
       messages.getMessage('assessedGlobalAutoNumbersCount', [assesmentInfo.globalAutoNumberAssessmentInfos.length])
