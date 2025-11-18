@@ -30,9 +30,9 @@ export class OmniStudioMetadataCleanupService {
   };
 
   private readonly connection: Connection;
-  private readonly messages: Messages;
+  private readonly messages: Messages<string>;
 
-  public constructor(connection: Connection, messages: Messages) {
+  public constructor(connection: Connection, messages: Messages<string>) {
     this.messages = messages;
     this.connection = connection;
   }

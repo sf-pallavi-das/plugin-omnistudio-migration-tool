@@ -1,5 +1,5 @@
 /* eslint-disable camelcase */
-import { expect } from '@salesforce/command/lib/test';
+import { expect } from 'chai';
 import { AnyJson } from '@salesforce/ts-types';
 import { getReplacedString, populateRegexForFunctionMetadata } from '../../../src/utils/formula/FormulaUtil';
 

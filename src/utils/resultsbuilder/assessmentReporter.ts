@@ -48,7 +48,7 @@ export class AssessmentReporter {
     omnistudioOrgDetails: OmnistudioOrgDetails,
     assessOnly: string,
     relatedObjects: string[],
-    messages: Messages,
+    messages: Messages<string>,
     userActionMessages: string[]
   ): Promise<void> {
     fs.mkdirSync(this.basePath, { recursive: true });
@@ -300,7 +300,7 @@ export class AssessmentReporter {
     customLabels: CustomLabelAssessmentInfo[],
     instanceUrl: string,
     omnistudioOrgDetails: OmnistudioOrgDetails,
-    messages: Messages,
+    messages: Messages<string>,
     assessmentReportTemplate: string
   ): void {
     const pageSize = 1000;
@@ -343,7 +343,7 @@ export class AssessmentReporter {
     basePath: string,
     result: AssessmentInfo,
     omnistudioOrgDetails: OmnistudioOrgDetails,
-    messages: Messages,
+    messages: Messages<string>,
     reports: string[],
     userActionMessages: string[]
   ): void {
