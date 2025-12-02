@@ -70,6 +70,9 @@ export default class Migrate extends SfCommand<MigrateResult> {
     'target-org': flags.optionalOrg({
       summary: 'Target org username or alias',
       required: true,
+      aliases: ['targetusername', 'u'],
+      deprecateAliases: true,
+      makeDefault: false, // Prevent auto-resolution during command-reference generation
     }),
     only: flags.string({
       char: 'o',

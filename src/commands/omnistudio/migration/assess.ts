@@ -47,6 +47,9 @@ export default class Assess extends SfCommand<AssessmentInfo> {
     'target-org': flags.optionalOrg({
       summary: 'Target org username or alias',
       required: true,
+      aliases: ['targetusername', 'u'],
+      deprecateAliases: true,
+      makeDefault: false, // Prevent auto-resolution during command-reference generation
     }),
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     only: flags.string({

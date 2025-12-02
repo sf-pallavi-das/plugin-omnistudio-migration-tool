@@ -41,8 +41,12 @@ export default class Info extends SfCommand<InfoResult> {
   public static readonly flags: any = {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     'target-org': flags.optionalOrg({
+      char: 'o',
       summary: 'Target org username or alias',
       required: true,
+      aliases: ['targetusername', 'u'],
+      deprecateAliases: true,
+      makeDefault: false, // Prevent auto-resolution during command-reference generation
     }),
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     'target-dev-hub': flags.optionalHub({
