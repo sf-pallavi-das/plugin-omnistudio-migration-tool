@@ -12,7 +12,9 @@ before(function () {
       Logger.info('CI environment detected. Installing Chrome for Puppeteer...');
       // Clear stale puppeteer cache to avoid corrupted/partial downloads
       execSync('rm -rf ~/.cache/puppeteer', { stdio: 'inherit' });
-      execSync('npx --yes puppeteer browsers install chrome', { stdio: 'inherit' });
+      // Use the project-local puppeteer CLI (not npx --yes which may resolve a different version)
+      // This ensures Chrome version matches what puppeteer-core expects (143.0.7499.40)
+      execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
       Logger.info('Chrome installed successfully.');
     } catch (error) {
       Logger.error('Failed to install Chrome:', error);
@@ -88,10 +90,9 @@ describe('DocumentRegistry', () => {
           return true;
         }
       } catch (error) {
-        // Gracefully skip when Chrome is not available on CI (e.g., cache corruption, version mismatch)
-        if (error instanceof Error) {
-          Logger.warn(`Puppeteer unavailable - skipping URL validation: ${error.message}`);
-          return true;
+        if (error instanceof Error && error.message.includes('Failed to launch')) {
+          Logger.warn('Puppeteer failed to launch - skipping URL validation tests');
+          return true; // Skip test gracefully
         }
         throw error;
       }
