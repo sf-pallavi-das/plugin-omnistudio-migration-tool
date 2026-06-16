@@ -10,6 +10,8 @@ before(function () {
   if (process.env.CI === 'true') {
     try {
       Logger.info('CI environment detected. Installing Chrome for Puppeteer...');
+      // Clear stale puppeteer cache to avoid corrupted/partial downloads
+      execSync('rm -rf ~/.cache/puppeteer', { stdio: 'inherit' });
       execSync('npx --yes puppeteer browsers install chrome', { stdio: 'inherit' });
       Logger.info('Chrome installed successfully.');
     } catch (error) {
