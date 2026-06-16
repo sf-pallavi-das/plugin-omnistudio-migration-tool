@@ -109,7 +109,7 @@
     "ip-address": "^10.1.1",
     "picomatch": "^4.0.4",
     "diff": "^5.2.2",
-    "@oclif/core": "4.8.0"
+    "@salesforce/sf-plugins-core/@oclif/core": "4.8.0"
   },
   "engines": {
     "node": ">=22.0.0"
