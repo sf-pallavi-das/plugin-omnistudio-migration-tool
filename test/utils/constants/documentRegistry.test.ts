@@ -1,27 +1,9 @@
 import { execSync } from 'child_process';
+import path from 'path';
 import puppeteer from 'puppeteer';
 import { expect } from 'chai';
 import { documentRegistry } from '../../../src/utils/constants/documentRegistry';
 import { Logger } from '../../../src/utils/logger';
-
-// Ensure Chrome is installed before running tests
-before(function () {
-  this.timeout(120000); // 2 minutes for Chrome installation
-  if (process.env.CI === 'true') {
-    try {
-      Logger.info('CI environment detected. Installing Chrome for Puppeteer...');
-      // Clear stale puppeteer cache to avoid corrupted/partial downloads
-      execSync('rm -rf ~/.cache/puppeteer', { stdio: 'inherit' });
-      // Use the project-local puppeteer CLI (not npx --yes which may resolve a different version)
-      // This ensures Chrome version matches what puppeteer-core expects (143.0.7499.40)
-      execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
-      Logger.info('Chrome installed successfully.');
-    } catch (error) {
-      Logger.error('Failed to install Chrome:', error);
-      throw error;
-    }
-  }
-});
 
 // Dictionary mapping documentRegistry keys to their expected page titles
 const titles = {
@@ -53,6 +35,26 @@ const titles = {
 };
 
 describe('DocumentRegistry', () => {
+  // Ensure Chrome is installed before running tests
+  before(function () {
+    this.timeout(120000); // 2 minutes for Chrome installation
+    if (process.env.CI === 'true') {
+      try {
+        Logger.info('CI environment detected. Installing Chrome for Puppeteer...');
+        // Clear stale puppeteer cache to avoid corrupted/partial downloads
+        execSync('rm -rf ~/.cache/puppeteer', { stdio: 'inherit' });
+        // Use the project-local puppeteer CLI directly — bypasses npx which behaves
+        // differently on Node 24+ (npm 11.x) and may fail to resolve the local binary
+        const puppeteerCli = path.resolve(__dirname, '../../../node_modules/.bin/puppeteer');
+        execSync(`"${puppeteerCli}" browsers install chrome`, { stdio: 'inherit' });
+        Logger.info('Chrome installed successfully.');
+      } catch (error) {
+        Logger.error('Failed to install Chrome:', error);
+        throw error;
+      }
+    }
+  });
+
   describe('URL Validation', () => {
     // Helper function to make HTTP request and check if URL is accessible
     async function checkSalesforceUrlWithPuppeteer(key: string, url: string): Promise<boolean> {
